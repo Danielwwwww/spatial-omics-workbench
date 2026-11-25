@@ -8,7 +8,7 @@
 <body>
 <header class="chrome"><div class="shell top"><a href="./" class="brand"><span class="mark" aria-hidden="true">◈</span><span>空间组学工作台</span></a><span class="mode" id="mode">浏览器计算</span></div></header>
 <main class="shell">
-<section class="intro"><div><h1>组织空间分析</h1><p>上传 H&E、空间转录组和空间代谢组，在同一张组织图上比较三类数据。</p></div></section>
+<section class="intro"><div><h1>组织空间分析</h1><p>上传 H&E、空间转录组和空间代谢组，在同一张组织图上比较三类数据。</p><button type="button" class="btn primary" id="reference-example">参考样例</button></div></section>
 <details class="upload" id="upload" open><summary>上传三模态数据并配准</summary>
 <p class="sub" id="compute-info">直接选择三类原始文件。配准在当前浏览器中执行，所选文件留在本机。</p>
 <form id="upload-form">
@@ -17,8 +17,9 @@
     <label>空间代谢组<input type="file" id="msi-files" accept=".csv,.tsv,.gz,.imzml,.ibd" multiple required><small>强度表，或一起选 imzML 和 IBD</small></label>
     <label>空间转录组<input type="file" id="st-files" accept=".csv,.tsv,.txt,.gz,.h5ad" multiple required><small>H5AD、坐标计数表，或一起选 summary 和 DGE</small></label>
   </div>
-  <label>参考图谱 <select id="atlas"><option value="allen-ccfv3" selected>Allen CCFv3 成年小鼠 · 冠状切片</option><option value="none">关闭参考图谱</option></select></label>
+  <label>参考图谱 <select id="atlas"><option value="allen-ccfv3" selected>脑 · Allen CCFv3 成年小鼠冠状切片</option><option value="liver">肝脏 · 啮齿类组织学</option><option value="pancreas">胰腺 · 啮齿类组织学</option><option value="kidney">肾脏 · 啮齿类组织学</option><option value="lung">肺 · 啮齿类组织学</option><option value="small-intestine">小肠 · 啮齿类组织学</option><option value="none">关闭参考图谱</option></select></label>
   <p class="sub" id="atlas-input-note">自动匹配 H&E 轮廓。层面与方向可在高级设置中指定。</p>
+  <div id="atlas-reference" class="atlas-reference" hidden></div>
   <details class="advanced">
   <summary>高级设置</summary>
   <div class="upload-grid">
@@ -30,7 +31,7 @@
     <label>图谱旋转<select id="atlas-rotation"><option value="auto">自动匹配</option><option value="0">原方向</option><option value="90">逆时针 90°</option><option value="180">180°</option><option value="270">顺时针 90°</option></select></label>
     <label>配置 JSON（解剖点、ROI、标尺）<input type="file" id="settings" accept=".json"></label>
   </div>
-  <p class="sub">仅提供数据时使用轮廓初始化。涉及脑区或高精度复核时，可加入解剖点、区域多边形和物理标尺。<a href="./registration-config.json" download>下载配置示例</a></p>
+  <p class="sub">仅提供数据时使用轮廓初始化。需要复核时，可加入解剖点、区域多边形和物理标尺。<a href="./registration-config.json" download>下载配置示例</a></p>
   <label class="check"><input id="refine" type="checkbox" checked>评估局部非线性细化</label>
   <div id="stalign-control" hidden>
   <label class="check"><input id="stalign" type="checkbox" checked>比较 STalign LDDMM</label>
@@ -43,14 +44,17 @@
 <section id="results" hidden>
 <div class="dataset"><div><h2 id="title"></h2><span class="sub" id="origin"></span></div><div class="metrics"><div><span>三模态覆盖</span><strong id="coverage"></strong></div><div><span>匹配网格</span><strong id="tiles"></strong></div><div><span>可选离子 / 基因</span><strong id="features"></strong></div></div></div>
 <div class="workspace">
-<section class="card maps"><div class="card-top"><div><h3>空间分布</h3><p class="sub" id="map-note"></p></div><div class="map-toggles"><button type="button" class="btn" id="roi-open" hidden>手绘脑区</button><label class="check"><input type="checkbox" id="atlas-only">只看 H&E 分区</label><label class="check"><input type="checkbox" id="boundaries" checked>区域边界与名称</label></div></div>
+<section class="card maps"><div class="card-top"><div><h3>空间分布</h3><p class="sub" id="map-note"></p></div><div class="map-toggles"><button type="button" class="btn" id="roi-open" hidden>手绘区域</button><label class="check"><input type="checkbox" id="atlas-only">只看 H&E 分区</label><label class="check"><input type="checkbox" id="boundaries" checked>区域边界与名称</label></div></div>
 <div class="controls"><label>离子<select id="ion" aria-label="选择离子"></select></label><label>查看区域<select id="region"></select></label><label>强度尺度<select id="mode-ion"><option value="norm">离子 / TIC</option><option value="raw">原始强度</option></select></label><label>叠加强度<input type="range" id="opacity" min="0.15" max="1" step="0.05" value="0.76"></label></div>
 <div class="map-pair"><div class="map"><div class="map-head"><strong>代谢物离子分布</strong><span id="ion-label"></span></div><canvas id="ion-map" width="560" height="430" role="img" aria-label="离子空间分布图"></canvas><div class="scale"><span>低</span><i></i><span>高</span><span id="ion-max"></span></div></div><div class="map"><div class="map-head"><strong>转录组表达</strong><select id="gene" aria-label="选择基因"></select></div><canvas id="gene-map" width="560" height="430" role="img" aria-label="基因表达空间分布图"></canvas><div class="scale st-fixed"><span>0</span><i></i><span>10,000</span><span id="gene-max"></span></div></div></div>
-<p class="sub map-foot" id="map-hover">移动到图上查看 H&E 原图坐标。</p><p class="sub map-foot" id="st-map-note"></p><p class="sub map-foot">图谱结构名用黄色，手绘区用黑色。</p>
+<p class="sub map-foot" id="map-hover">移动到图上查看 H&E 原图坐标。</p><p class="sub map-foot" id="st-map-note"></p><p class="sub map-foot">图谱结构名以英文显示，白底金黄色字。手绘区以黑字显示。</p>
 <label id="st-resolution-control" class="st-resolution" hidden>ST 显示分辨率 <select id="st-resolution" aria-label="ST 显示分辨率"></select><span id="st-depth" class="sub"></span></label></section>
-<aside class="card regions"><div class="card-top"><div><h3>所选离子的脑区分布</h3><p class="sub">按有测量的 MSI 像素汇总</p></div></div><div id="region-stats" class="regions-list"></div><p class="sub" id="tissue-note"></p><section id="expression" hidden><h3>区域转录组</h3><p id="expression-label" class="sub"></p><div id="expression-rows"></div></section></aside>
+<section class="card regions"><div class="card-top"><div><h3>组织分区与所选离子分布</h3><p class="sub">点击区域名称在切片上定位。离子强度按有测量的 MSI 像素汇总。</p></div></div>
+<div class="scroll" id="region-table"><table aria-label="组织区域及离子统计">
+<thead><tr><th scope="col" id="region-name-header">Region</th><th scope="col">中文名称</th><th scope="col">平均离子强度</th><th scope="col">MSI 像素数</th><th scope="col">检出率</th></tr></thead>
+<tbody id="region-stats"></tbody></table></div><p class="sub" id="tissue-note"></p><section id="expression" hidden><h3>区域转录组</h3><p id="expression-label" class="sub"></p><div id="expression-rows"></div></section></section>
 </div>
-<section class="card metabolite-list"><div class="card-top"><div><h3>代谢物分布浏览</h3><p id="ion-table-note" class="sub"></p></div></div><p id="ion-evidence" class="sub"></p><div class="scroll"><table><thead><tr><th scope="col">m/z 窗口中心</th><th scope="col">候选注释</th><th scope="col">平均强度</th><th scope="col">检出率</th><th scope="col">MSI 像素</th><th scope="col">平均信号最高的区域</th></tr></thead><tbody id="metabolites"></tbody></table></div><p class="sub">单击 m/z 更新分布和候选证据。确认分子身份需要本样本的碎片谱与标准品对照。</p></section>
+<section class="card metabolite-list"><div class="card-top"><div><h3>代谢物分布浏览</h3><p id="ion-table-note" class="sub"></p></div></div><p id="ion-evidence" class="sub"></p><div class="scroll"><table><thead><tr><th scope="col">m/z 窗口中心</th><th scope="col">候选注释</th><th scope="col">平均强度</th><th scope="col">检出率</th><th scope="col">MSI 像素</th><th scope="col">平均信号最高的区域</th></tr></thead><tbody id="metabolites"></tbody></table></div><p class="sub">单击 m/z 更新分布和候选证据。候选注释基于质量窗口和已记录的参考证据。分子身份需用本样本的碎片谱或标准品复核。</p></section>
 <div class="below"><section class="card"><div class="card-top"><div><h3>空间相关基因</h3><p class="sub" id="correlation-note"></p></div><label>相关方法 <select id="correlation-method"><option value="spearman">Spearman</option><option value="pearson">Pearson</option></select></label></div><div id="pair-panel" hidden><p class="sub" id="pair-caption"></p><canvas id="pair-plot" width="540" height="190" role="img" aria-label="离子强度与基因表达共同网格散点图"></canvas></div><div class="scroll"><table><thead><tr><th scope="col">基因</th><th scope="col">相关系数</th><th scope="col">共同网格 n</th></tr></thead><tbody id="correlations"></tbody></table></div><p class="sub">相关系数用于探索共定位。邻近网格共享空间信息。</p>
 <details id="grid-detail" class="detail"><summary>共同网格 n 怎样计算</summary>
 <ol class="grid-steps">
@@ -62,11 +66,12 @@
 <p class="sub" id="grid-detail-note"></p><div class="scroll"><table><thead><tr><th scope="col">格子 (x,y)</th><th scope="col">MSI 像素</th><th scope="col">ST 点</th><th scope="col">离子 / TIC 均值</th><th scope="col">基因 / 万 UMI</th><th scope="col">ln(1 + 表达)</th></tr></thead><tbody id="grid-pairs"></tbody></table></div>
 </details></section><section class="card"><div class="card-top"><div><h3>配准质控</h3><p class="sub">检查点误差和组织轮廓重合</p></div></div><div id="quality"></div><details class="detail"><summary>指标口径</summary><p>检查点未进入拟合。Dice 衡量轮廓交集，部分组织覆盖时会受范围限制。未提供检查点时，结果需要解剖复核。</p></details></section></div>
 </section>
-<dialog id="roi-dialog" aria-labelledby="roi-title"><div class="roi-top"><h2 id="roi-title">在 H&E 上手绘脑区</h2><button type="button" class="btn" id="roi-close">关闭</button></div>
+<dialog id="roi-dialog" aria-labelledby="roi-title"><div class="roi-top"><h2 id="roi-title">在 H&E 上手绘区域</h2><button type="button" class="btn" id="roi-close">关闭</button></div>
 <p class="sub">沿边界逐点单击，保存时闭合。后添加的区域覆盖重叠处，H&E 组织外会被裁掉。</p>
+<details id="roi-reference" class="detail" hidden><summary>参照器官图谱选取区域</summary><div id="roi-atlas-reference" class="atlas-reference"></div></details>
 <canvas id="roi-canvas" width="960" height="650" role="img" aria-label="带参考边界的 H&E 标注画布"></canvas>
-<div class="roi-actions"><label>脑区名称 <input id="roi-name" type="text" maxlength="64" autocomplete="off" placeholder="例如 左侧皮层复核区"></label><button type="button" class="btn" id="roi-undo">撤销一点</button><button type="button" class="btn" id="roi-clear">清空绘制</button><button type="button" class="btn primary" id="roi-save" disabled>保存脑区并重算</button></div>
+<div class="roi-actions"><label>区域名称 <input id="roi-name" type="text" maxlength="64" autocomplete="off" placeholder="输入结构名称"></label><button type="button" class="btn" id="roi-undo">撤销一点</button><button type="button" class="btn" id="roi-clear">清空绘制</button><button type="button" class="btn primary" id="roi-save" disabled>保存区域并重算</button></div>
 <p id="roi-status" class="sub" role="status" aria-live="polite"></p><div id="roi-saved"></div><button type="button" class="btn" id="roi-export">导出手绘坐标</button></dialog>
-</main><footer class="shell foot">H&E · MALDI-MSI · 空间转录组</footer>
+</main><footer class="shell foot"><span>H&E · MALDI-MSI · 空间转录组</span><p><small>浙江大学竺可桢学院2026年度学生科研训练计划项目资助课题（高分辨率空间多组学对齐算法工具开发）研究成果。</small></p></footer>
 <script type="module" src="./viewer.mjs"></script>
 </body></html>

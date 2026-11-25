@@ -1,4 +1,6 @@
 import {regionSummary, associations, tilePairs} from './statistics.mjs';
+import {regionDisplay} from './region-names.mjs';
+import {organAtlases} from './organ-atlases.mjs';
 
 const el = id => document.getElementById(id);
 const pct = v => `${(v*100).toFixed(1)}%`;
@@ -20,6 +22,39 @@ let source=null, draft=[], editingBusy=false;
 let computeWorker;
 
 function notify(msg='',error=false){el('message').textContent=msg;el('message').classList.toggle('error',error);}
+
+function sourceLink(label, url){
+  const link=node('a',label);
+  link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+  return link;
+}
+
+function showOrganReference(container, reference, selectName){
+  container.replaceChildren();
+  container.hidden=!reference;
+  if(!reference)return;
+  const figure=node('figure'), img=node('img'), caption=node('figcaption',reference.caption);
+  img.src=reference.image;img.alt=`${reference.title}参考切片`;img.loading='lazy';img.referrerPolicy='no-referrer';
+  figure.append(img,caption);
+  const content=node('div'), list=node('ul');
+  content.append(node('strong',`${reference.title} · 组织分区参考`),
+    node('p','依据参考图，在自己的 H&E 上手绘边界。边界坐标由实际切片确定。','sub'));
+  for(const [english,chinese,hint] of reference.structures){
+    const item=node('li'), label=`${english}（${chinese}）`;
+    if(selectName){
+      const button=node('button',label,'atlas-label');
+      button.type='button';button.onclick=()=>selectName(english);
+      item.append(button);
+    }else item.append(node('strong',label));
+    item.append(node('span',hint,'sub'));list.append(item);
+  }
+  content.append(list,sourceLink('查看 NTP 啮齿类组织图谱',reference.url));
+  container.append(figure,content);
+}
+
+function referenceForResult(){
+  return organAtlases.get(source?.config?.organ_reference);
+}
 function options(id,names,withAll){
   const s=el(id);s.replaceChildren();
   names.forEach((name,i)=>{if(i===0&&withAll===true)return;s.add(new Option(name,String(i)));});
@@ -38,7 +73,7 @@ async function load(bundle, origin=null){
   validate(bundle);
   const next=new Image(); next.src=`data:image/jpeg;base64,${bundle.image.jpeg}`;
   await next.decode(); data=bundle; image=next; source=origin; decodedGenes.clear();
-  options('ion',data.ionNames,false);options('region',data.regions,true);options('gene',data.geneNames,false);
+  options('ion',data.ionNames,false);options('region',data.regions.map((_,id)=>displayRegion(id).english),true);options('gene',data.geneNames,false);
   if(data.stMap?.length){
     const clearest=data.stMap.reduce((best,layer,i)=>layer.n>data.stMap[best].n?i:best,0);
     el('gene').value=String(clearest);
@@ -48,6 +83,12 @@ async function load(bundle, origin=null){
   el('features').textContent=`${data.ionNames.length} / ${data.geneNames.length}`;
   el('results').hidden=false;
   el('roi-open').hidden=!source;
+  const reference=referenceForResult();
+  el('region-name-header').textContent=data.atlas?'Brain region':'Region';
+  el('roi-reference').hidden=!reference;
+  showOrganReference(el('roi-atlas-reference'),reference,name=>{
+    el('roi-name').value=name;drawROI();el('roi-name').focus();
+  });
   const resolutions=Object.keys(data.stResolutions||{});
   el('st-resolution').replaceChildren(...resolutions.map(size=>new Option(`bin${size}`,size)));
   el('st-resolution-control').hidden=!resolutions.length;
@@ -70,6 +111,13 @@ function regionClass(id){
   return id===1?'region-neutral':regionColor(id)==='#151515'?'region-manual':'region-atlas';
 }
 
+function displayRegion(id){
+  const name=data.regions[id];
+  const pair=referenceForResult()?.structures.find(([english])=>english===name);
+  return pair?{english:pair[0],chinese:pair[1],short:pair[0]}:
+    regionDisplay(name,regionClass(id)==='region-manual');
+}
+
 function drawRegions(ctx,geom,region,showAll){
   const {scale,dx,dy}=geom;
   const occupied=[];
@@ -87,8 +135,9 @@ function drawRegions(ctx,geom,region,showAll){
     if((region&&r.id!==region)||r.id===1||(!showAll&&!region&&(r.width||0)<13))continue;
     const anchor=r.labelXY??r.xy[Math.floor(r.xy.length/2)];
     if(!anchor)continue;
-    const [x,y]=[dx+anchor[0]*scale,dy+anchor[1]*scale];
-    const name=data.regions[r.id],half=ctx.measureText(name).width/2+3;
+    const name=displayRegion(r.id).map,half=ctx.measureText(name).width/2+3;
+    const x=Math.min(dx+data.image.width*scale-half,Math.max(dx+half,dx+anchor[0]*scale));
+    const y=dy+anchor[1]*scale;
     const bounds=[x-half,y-8,x+half,y+8];
     if(!region&&occupied.some(([l,t,rr,b])=>bounds[0]<rr&&bounds[2]>l&&bounds[1]<b&&bounds[3]>t))continue;
     occupied.push(bounds);
@@ -153,50 +202,58 @@ function map(kind){
 function showRegion(ion,mode){
   const container=el('region-stats');container.replaceChildren();
   const rows=regionSummary(data,ion,mode);
-  const top=rows[0]?.mean||1;
   for(const r of rows){
-    const row=node('div',undefined,'region-row'), header=node('div',undefined,'region-caption');
-    const select=node('button',r.name);
+    const row=node('tr'), header=node('td');
+    const names=displayRegion(r.id),select=node('button',names.english);
     select.type='button';
     select.setAttribute('aria-pressed',String(Number(el('region').value)===r.id));
     select.onclick=()=>{el('region').value=String(r.id);render();};
     select.classList.add(regionClass(r.id));
-    header.append(select,node('strong',intensityText(mode,r.mean)));
-    const track=node('div',undefined,'track'), bar=node('i');bar.style.width=pct(r.mean/top);track.append(bar);
-    row.append(header,track,node('p',`n = ${count(r.n)} · 检出 ${pct(r.detect)}`,'sub'));
+    header.append(select);
+    row.append(header,node('td',names.chinese?`（${names.chinese}）`:'—'),
+               node('td',intensityText(mode,r.mean)),node('td',count(r.n)),node('td',pct(r.detect)));
     container.append(row);
   }
-  if(!rows.length)container.append(node('p','所选离子没有组织内测量。','sub'));
+  if(!rows.length){
+    const row=node('tr'), cell=node('td','所选离子没有组织内测量。');
+    cell.colSpan=5;row.append(cell);container.append(row);
+  }
   const note=el('tissue-note');
   note.replaceChildren();
   if(data.atlas){
     note.append(data.atlas.method+' ');
     if(data.atlas.ap_mm_from_ccf_origin!==undefined){
       const a=data.atlas;
-      const matched=a.named_fraction===undefined?'待复核':`图谱命名覆盖 ${pct(a.named_fraction)}`;
-      note.append(node('span',`冠状层面 ${val(a.ap_mm_from_ccf_origin)} mm（CCF 原点） · 旋转 ${a.rotation}° · ${matched}。`),' ');
+      const named=a.named_fraction??a.atlas_assigned_he_fraction;
+      const rotation=a.rotation===undefined?'':` · 旋转 ${a.rotation}°`;
+      const matched=named===undefined?'待复核':`图谱命名覆盖 ${pct(named)}`;
+      note.append(node('span',`冠状层面 ${val(a.ap_mm_from_ccf_origin)} mm（CCF 原点）${rotation} · ${matched}。`),' ');
     }
     const source=node('a','Allen 冠状参考图谱');source.href=data.atlas.source;
     source.target='_blank';source.rel='noopener';note.append(source);
-  }else note.textContent=data.regions.length===2?'命名脑区可在高级设置中提供。':'区域边界来自 H&E 标注。';
+  }else{
+    const reference=referenceForResult();
+    note.textContent=reference?`${reference.title}参考图谱支持对照手绘，统计按切片上的手绘边界计算。`:
+      data.regions.length===2?'可通过手绘添加组织分区。':'区域边界来自 H&E 标注。';
+  }
 }
 
 function showMetabolites(region,mode,selected){
   const body=el('metabolites');
   body.replaceChildren();
-  el('ion-table-note').textContent=`${region?data.regions[region]:'全部组织'} · ${mode==='norm'?'离子 / TIC':'原始强度'}`;
+  el('ion-table-note').textContent=`${region?displayRegion(region).english:'全部组织'} · ${mode==='norm'?'离子 / TIC':'原始强度'}`;
   const evidence=el('ion-evidence');
   evidence.replaceChildren();
   const selectedAnnotation=data.ionAnnotations?.[data.ionNames[selected]];
   if(selectedAnnotation){
     evidence.append(`${selectedAnnotation.name}${selectedAnnotation.ion?' · '+selectedAnnotation.ion:''}。`);
-    if(selectedAnnotation.observedMedian)evidence.append(`窗内峰质心的中位 m/z ${selectedAnnotation.observedMedian.toFixed(6)}。 `);
-    evidence.append(selectedAnnotation.evidence+' ');
-    if(selectedAnnotation.source){
+    if(Number.isFinite(selectedAnnotation.observedMedian))evidence.append(`窗内峰质心的中位 m/z ${selectedAnnotation.observedMedian.toFixed(6)}。 `);
+    if(selectedAnnotation.evidence)evidence.append(selectedAnnotation.evidence+' ');
+    if(typeof selectedAnnotation.source==='string'&&selectedAnnotation.source.startsWith('https://')){
       const link=node('a','参考证据');link.href=selectedAnnotation.source;
       link.target='_blank';link.rel='noopener';evidence.append(link);
     }
-  }
+  }else evidence.textContent='本离子暂无候选注释。';
   data.ionNames.forEach((name, index)=>{
     const areas=regionSummary(data,index,mode);
     const chosen=region?areas.filter(a=>a.id===region):areas;
@@ -211,8 +268,8 @@ function showMetabolites(region,mode,selected){
       el('ion-map').scrollIntoView({block:'nearest'});
     };
     label.append(button);
-    row.append(label,node('td',data.ionAnnotations?.[name]?.name??'待鉴定'),node('td',n?intensityText(mode,total/n):'无测量'),
-               node('td',n?pct(detected/n):'—'),node('td',count(n)),node('td',areas[0]?.name??'—'));
+    row.append(label,node('td',data.ionAnnotations?.[name]?.name??'无候选注释'),node('td',n?intensityText(mode,total/n):'无测量'),
+               node('td',n?pct(detected/n):'—'),node('td',count(n)),node('td',areas[0]?displayRegion(areas[0].id).english:'—'));
     body.append(row);
   });
 }
@@ -229,7 +286,8 @@ function showExpression(){
   if(!selected.length)rows.append(node('p','此区无通过质控的共同覆盖 ST 点。','sub'));
   for (const item of selected) {
     const caption = node('div',undefined,'region-caption');
-    caption.append(node('span',data.regions[item.id],regionClass(item.id)),node('strong',val(item.cp10k[gene])));
+    const names=displayRegion(item.id);
+    caption.append(node('span',names.chinese?`${names.english}（${names.chinese}）`:names.english,regionClass(item.id)),node('strong',val(item.cp10k[gene])));
     rows.append(caption,node('p',`${count(item.stN)} 个 bin · ${count(item.umi)} UMI`,'sub'));
   }
 }
@@ -346,12 +404,15 @@ el('gene').addEventListener('change',showExpression);
 el('gene').addEventListener('change',showGridPairs);
 el('gene').addEventListener('change',showPairPlot);
 el('correlation-method').addEventListener('change',render);
-el('atlas').addEventListener('change',()=>{
-  const active=el('atlas').value==='allen-ccfv3';
+function updateAtlasChoice(){
+  const choice=el('atlas').value, active=choice==='allen-ccfv3';
   el('atlas-ap').disabled=!active;
   el('atlas-rotation').disabled=!active;
   el('atlas-input-note').hidden=!active;
-});
+  showOrganReference(el('atlas-reference'),organAtlases.get(choice));
+}
+el('atlas').addEventListener('change',updateAtlasChoice);
+updateAtlasChoice();
 el('grid-detail').addEventListener('toggle',showGridPairs);
 el('st-resolution').addEventListener('change',render);
 for(const kind of ['ion','gene'])el(`${kind}-map`).addEventListener('pointermove',event=>{
@@ -438,7 +499,7 @@ async function applyRegions(regions, selected){
   if(editingBusy)return;
   editingBusy=true;
   const active=source, ion=el('ion').value, gene=el('gene').value, size=el('st-resolution').value;
-  el('roi-status').textContent='正在重算脑区的离子、表达和共同网格。';
+  el('roi-status').textContent='正在重算区域的离子、表达和共同网格。';
   drawROI();renderSavedRegions();
   try{
     const config = {...active.config, manual_regions:regions};
@@ -509,11 +570,30 @@ function dataFiles(form){
   return files;
 }
 
+const exampleButton=el('reference-example');
+const submitButton=el('upload-form').querySelector('button[type=submit]');
+exampleButton.onclick=async()=>{
+  if(exampleButton.disabled||submitButton.disabled||editingBusy)return;
+  exampleButton.disabled=true;submitButton.disabled=true;
+  notify('正在加载参考样例。');
+  try{
+    const response=await fetch(new URL('./examples/brain-section.json',import.meta.url));
+    if(!response.ok)throw new Error('参考样例暂不可用。');
+    await load(await response.json());
+    const annotated=data.ionNames.findIndex(name=>data.ionAnnotations?.[name]?.source);
+    if(annotated>=0){el('ion').value=String(annotated);render();}
+    el('upload').open=false;
+    el('results').scrollIntoView({block:'start'});
+    notify('');
+  }catch(error){notify(error.message,true);}
+  finally{exampleButton.disabled=false;submitButton.disabled=false;}
+};
+
 el('upload-form').onsubmit=async event=>{
   event.preventDefault();
   const form=event.currentTarget, submit=form.querySelector('button[type=submit]');
   if(submit.disabled||editingBusy)return;
-  submit.disabled=true; el('roi-open').disabled=true; notify('正在读取文件和计算配准。大文件可能需要数分钟。');
+  submit.disabled=true; exampleButton.disabled=true; el('roi-open').disabled=true; notify('正在读取文件和计算配准。大文件可能需要数分钟。');
   try{
     const files=dataFiles(form);
     const cfgFile=el('settings').files[0]; const cfg=cfgFile?JSON.parse(await cfgFile.text()):{};
@@ -522,16 +602,18 @@ el('upload-form').onsubmit=async event=>{
     if(mz){cfg.mz=mz.split(/[,，\s]+/).map(Number);if(cfg.mz.some(x=>!Number.isFinite(x)||x<=0))throw new Error('请填写有效的正数 m/z');}
     if(genes)cfg.genes=genes.split(/[,，\s]+/);
     cfg.refine=el('refine').checked;
-    cfg.atlas=el('atlas').value;
+    const atlas=el('atlas').value;
+    cfg.atlas=atlas==='allen-ccfv3'?atlas:'none';
+    cfg.organ_reference=organAtlases.has(atlas)?atlas:undefined;
     const atlasAP=el('atlas-ap').value;
-    if(atlasAP)cfg.atlas_ap_mm=Number(atlasAP);
+    if(cfg.atlas==='allen-ccfv3'&&atlasAP)cfg.atlas_ap_mm=Number(atlasAP);
     const atlasRotation=el('atlas-rotation').value;
-    if(atlasRotation!=='auto')cfg.atlas_rotation=atlasRotation;
+    if(cfg.atlas==='allen-ccfv3'&&atlasRotation!=='auto')cfg.atlas_rotation=atlasRotation;
     cfg.stalign=localCompute && !el('stalign-control').hidden && el('stalign').checked;
     if(cfg.stalign)cfg.tre_priority=el('tre-priority').value;
     const result=await compute(files,cfg,notify);
     await load(result,{files,config:cfg}); el('upload').open=false;notify('配准已完成。请先复核质控指标。');
-  }catch(error){notify(error.message,true);}finally{submit.disabled=false;el('roi-open').disabled=false;}
+  }catch(error){notify(error.message,true);}finally{submit.disabled=false;exampleButton.disabled=false;el('roi-open').disabled=false;}
 };
 
 if (['localhost','127.0.0.1','[::1]'].includes(location.hostname)) {
