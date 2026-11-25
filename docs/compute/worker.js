@@ -4,7 +4,8 @@ const h5adWheels = [
   'https://files.pythonhosted.org/packages/ef/82/7a9d0550484a62c6da82858ee9419f3dd1ccc9aa1c26a1e43da3ecd20b0d/natsort-8.4.0-py3-none-any.whl',
   'https://files.pythonhosted.org/packages/0a/4b/ab615fea52e34579d5c6c7dba86b4f9d7f3cdb6a170b348ec49f34cf4355/anndata-0.11.4-py3-none-any.whl',
 ];
-const modules = ['__init__', 'pipeline', 'registration', 'manual_regions', 'st_display'];
+const modules = ['__init__.py', 'pipeline.py', 'registration.py', 'manual_regions.py', 'st_display.py',
+                 'atlas.py', 'allen-ccfv3.json'];
 const mount = '/input';
 let python, h5adReady = false;
 
@@ -21,8 +22,7 @@ async function prepare() {
   runtime.FS.mkdir('/workbench');
   runtime.FS.mkdir('/workbench/compute');
   runtime.FS.mkdir(mount);
-  await Promise.all(modules.map(async name => {
-    const file = name + '.py';
+  await Promise.all(modules.map(async file => {
     const response = await fetch(new URL(file, self.location.href));
     if (!response.ok) throw new Error('配准程序加载失败');
     runtime.FS.writeFile('/workbench/compute/' + file, new Uint8Array(await response.arrayBuffer()));

@@ -17,6 +17,7 @@ from scipy import ndimage as ndi, sparse
 
 from .registration import apply, register, warp, largest, otsu, affine, sample
 from .manual_regions import validate_regions
+from .atlas import project as project_atlas
 from .st_display import STDisplay
 
 
@@ -309,20 +310,25 @@ def convert_landmarks(rows, source_transform, target_transform):
     return fitted
 
 
-def region_labels(config, tissue, he_to_view, required_regions=()):
-    result = tissue.astype(np.int16)
-    names = ['Outside H&E', 'Other tissue' if config else 'Tissue']
+def polygon_pixels(corners, tissue, he_to_view):
+    xy = np.asarray(corners,dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2 or len(xy)<3 or not np.isfinite(xy).all():
+        raise ValueError('ROI polygons require at least three H&E x/y vertices')
+    bitmap = Image.new('1',tissue.shape[::-1])
+    ImageDraw.Draw(bitmap).polygon([tuple(row) for row in apply(he_to_view,xy)],fill=1)
+    return np.asarray(bitmap) & tissue
+
+
+def region_labels(config, tissue, he_to_view, required_regions=(), base=None):
+    result, names = base if base is not None else (
+        tissue.astype(np.int16), ['Outside H&E', 'Other tissue' if config else 'Tissue'])
     for name, corners in config.items():
-        xy = np.asarray(corners,dtype=float)
-        if xy.ndim != 2 or xy.shape[1] != 2 or len(xy)<3 or not np.isfinite(xy).all():
-            raise ValueError('ROI polygons require at least three H&E x/y vertices')
-        bitmap = Image.new('1',tissue.shape[::-1]); draw=ImageDraw.Draw(bitmap)
-        draw.polygon([tuple(row) for row in apply(he_to_view,xy)],fill=1)
-        inside = np.asarray(bitmap) & tissue
+        inside = polygon_pixels(corners,tissue,he_to_view)
         if name in required_regions and not inside.any():
             raise ValueError(f"{name} 没有覆盖 H&E 组织。")
-        result[inside] = len(names)
-        names.append(str(name))
+        if name not in names:
+            names.append(str(name))
+        result[inside] = names.index(name)
     return result, names
 
 
@@ -456,12 +462,22 @@ def analyze(he, msi, st, config, output=None, ibd=None, dge=None, he_mask=None, 
         qa.update({'source_to_raster':smat.tolist(),'source_to_he_view_affine':to_view.tolist(),'nonlinear_inverse_field':field.to_json() if field else None,
                    'candidate_inverse_field':candidate.to_json() if candidate else None,'tre_units':units})
         alignments[name]=qa
+    atlas = None
+    base = None
+    if config.get('atlas') == 'allen-ccfv3':
+        guides = config.get('atlas_hippocampus', [])
+        guide = np.zeros_like(tmask)
+        for corners in guides:
+            guide |= polygon_pixels(corners,tmask,hmat)
+        atlas_labels, atlas_names, atlas = project_atlas(tmask,config,guide if guides else None)
+        base = (atlas_labels,atlas_names)
     base_regions = config.get('regions', {})
+    reserved = base[1] if base is not None else ("Outside H&E","Other tissue","Tissue")
     manual = validate_regions(config.get('manual_regions', []), original,
-                              ("Outside H&E", "Other tissue", "Tissue", *base_regions))
+                              (*reserved, *base_regions))
     rois = dict(base_regions)
     rois.update((r["name"], r["points"]) for r in manual)
-    region, region_names = region_labels(rois,tmask,hmat,{r["name"] for r in manual})
+    region, region_names = region_labels(rois,tmask,hmat,{r["name"] for r in manual},base)
     tile=float(config.get('tile_size_he_px',max(target.shape)/22 / np.diag(hmat[:2,:2]).mean()))
     tile *= np.diag(hmat[:2,:2]).mean()
     if not np.isfinite(tile) or tile < 3 or tile > max(target.shape):
@@ -495,7 +511,7 @@ def analyze(he, msi, st, config, output=None, ibd=None, dge=None, he_mask=None, 
             frame.to_csv(coordinate_dir/f'{kind}_coordinates.csv.gz', index=False, float_format='%.7g')
     bundle={'schema':1,'name':str(config.get('name','New dataset')),'origin':str(config.get('origin','uploaded data')),
             'image':{'width':target.shape[1],'height':target.shape[0],'originalSize':list(original),'jpeg':jpeg},
-            'ionNames':ions,'geneNames':genes,'regions':region_names,'boundaries':display_labels(region,tmask),
+            'ionNames':ions,'geneNames':genes,'regions':region_names,'atlas':atlas,'boundaries':display_labels(region,tmask),
             'regionExpression':regional,'stMap':st_maps,'manualRegions':manual,'globalGrid':overall,
             'msi':{'xy':round_rows(layers['msi'],3),'region':ml.tolist(),'tic':round_rows(tic),'raw':round_rows(inten.T),
                    'norm':round_rows(ratio.T,9)},'grid':grid, 'tileSize':tile,

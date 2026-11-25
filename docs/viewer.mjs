@@ -171,6 +171,11 @@ function showRegion(ion,mode){
   note.replaceChildren();
   if(data.atlas){
     note.append(data.atlas.method+' ');
+    if(data.atlas.ap_mm_from_ccf_origin!==undefined){
+      const a=data.atlas;
+      const matched=a.named_fraction===undefined?'待复核':`图谱命名覆盖 ${pct(a.named_fraction)}`;
+      note.append(node('span',`冠状层面 ${val(a.ap_mm_from_ccf_origin)} mm（CCF 原点） · 旋转 ${a.rotation}° · ${matched}。`),' ');
+    }
     const source=node('a','Allen 冠状参考图谱');source.href=data.atlas.source;
     source.target='_blank';source.rel='noopener';note.append(source);
   }else note.textContent=data.regions.length===2?'命名脑区可在高级设置中提供。':'区域边界来自 H&E 标注。';
@@ -341,6 +346,12 @@ el('gene').addEventListener('change',showExpression);
 el('gene').addEventListener('change',showGridPairs);
 el('gene').addEventListener('change',showPairPlot);
 el('correlation-method').addEventListener('change',render);
+el('atlas').addEventListener('change',()=>{
+  const active=el('atlas').value==='allen-ccfv3';
+  el('atlas-ap').disabled=!active;
+  el('atlas-rotation').disabled=!active;
+  el('atlas-input-note').hidden=!active;
+});
 el('grid-detail').addEventListener('toggle',showGridPairs);
 el('st-resolution').addEventListener('change',render);
 for(const kind of ['ion','gene'])el(`${kind}-map`).addEventListener('pointermove',event=>{
@@ -511,6 +522,11 @@ el('upload-form').onsubmit=async event=>{
     if(mz){cfg.mz=mz.split(/[,，\s]+/).map(Number);if(cfg.mz.some(x=>!Number.isFinite(x)||x<=0))throw new Error('请填写有效的正数 m/z');}
     if(genes)cfg.genes=genes.split(/[,，\s]+/);
     cfg.refine=el('refine').checked;
+    cfg.atlas=el('atlas').value;
+    const atlasAP=el('atlas-ap').value;
+    if(atlasAP)cfg.atlas_ap_mm=Number(atlasAP);
+    const atlasRotation=el('atlas-rotation').value;
+    if(atlasRotation!=='auto')cfg.atlas_rotation=atlasRotation;
     cfg.stalign=localCompute && !el('stalign-control').hidden && el('stalign').checked;
     if(cfg.stalign)cfg.tre_priority=el('tre-priority').value;
     const result=await compute(files,cfg,notify);

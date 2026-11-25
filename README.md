@@ -9,6 +9,14 @@
 3. 选择「配准并生成结果」。首次计算会联网加载 Python 和科学计算组件。配准在浏览器的后台线程中运行，文件和结果留在当前设备。
 4. 在结果页切换离子、基因或组织区域。联合散点图的每个点对应一个共同网格，点击相关表的基因可联动表达图和散点图。打开「手绘脑区」修改边界，保存后重算区域统计。
 
+### 参考脑区图谱
+
+上传页默认使用 Allen CCFv3 成年小鼠冠状图谱。工作台从前后轴多个层面和四个方向中筛选候选，将标签投到当前 H&E，统计时只保留组织掩膜内的像素。可用「只看 H&E 分区」复核边界。页面显示匹配层面、旋转方向和命名覆盖率，未覆盖的组织显示为待复核区域。
+
+轮廓相近的层面可能对应不同内部结构。已知取材位置时，可在高级设置指定距 CCF 原点的前后轴坐标和旋转方向。配置也接受 `atlas_hippocampus`，值为 H&E 原图坐标中的海马多边形数组，用于辅助选层。图谱前缀中的左右指参考空间方向。其他物种、非冠状或局部切片可关闭图谱，保留自行标注功能。
+
+浏览器和 Python 使用同一份公开参考资产。资产由 Allen 25 µm 注释体和结构树生成，标签平面作 100 µm 采样，前后轴采样间隔为 0.2 mm。生成脚本为 `build_allen_reference.py`。参考来源见 [Allen Mouse CCFv3](https://alleninstitute.github.io/CCF-MAP/descriptions/mouse_ccf.html)、[注释体](https://download.alleninstitute.org/informatics-archive/current-release/mouse_ccf/annotation/ccf_2017/annotation_25.nrrd)和 [Wang 等（2020）](https://doi.org/10.1016/j.cell.2020.04.007)。
+
 ## 输入格式
 
 | 模态 | 文件 |

@@ -17,6 +17,8 @@
     <label>空间代谢组<input type="file" id="msi-files" accept=".csv,.tsv,.gz,.imzml,.ibd" multiple required><small>强度表，或一起选 imzML 和 IBD</small></label>
     <label>空间转录组<input type="file" id="st-files" accept=".csv,.tsv,.txt,.gz,.h5ad" multiple required><small>H5AD、坐标计数表，或一起选 summary 和 DGE</small></label>
   </div>
+  <label>参考图谱 <select id="atlas"><option value="allen-ccfv3" selected>Allen CCFv3 成年小鼠 · 冠状切片</option><option value="none">关闭参考图谱</option></select></label>
+  <p class="sub" id="atlas-input-note">自动匹配 H&E 轮廓。层面与方向可在高级设置中指定。</p>
   <details class="advanced">
   <summary>高级设置</summary>
   <div class="upload-grid">
@@ -24,6 +26,8 @@
     <label>样本名<input type="text" id="dataset-name" placeholder="新样本"></label>
     <label>目标 m/z（留空自动选取）<input type="text" id="masses" ></label>
     <label>指定展示基因<input type="text" id="genes" ></label>
+    <label>冠状层面（自 CCF 原点，mm）<input id="atlas-ap" type="number" min="0" max="13.2" step="0.05" placeholder="自动匹配"></label>
+    <label>图谱旋转<select id="atlas-rotation"><option value="auto">自动匹配</option><option value="0">原方向</option><option value="90">逆时针 90°</option><option value="180">180°</option><option value="270">顺时针 90°</option></select></label>
     <label>配置 JSON（解剖点、ROI、标尺）<input type="file" id="settings" accept=".json"></label>
   </div>
   <p class="sub">仅提供数据时使用轮廓初始化。涉及脑区或高精度复核时，可加入解剖点、区域多边形和物理标尺。<a href="./registration-config.json" download>下载配置示例</a></p>
