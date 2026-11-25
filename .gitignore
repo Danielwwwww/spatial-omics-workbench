@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.venv/
+workspace/
+*.ibd
+*.imzML
+*.imzml
+*.fastq*
+*.h5ad
+*.bundle.json
+*_atlas_rois.json
+*_ion_annotations.json

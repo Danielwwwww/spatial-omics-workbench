@@ -1,0 +1,10 @@
+{
+  "name": "新切片",
+  "he_um_per_px": [2, 2],
+  "tile_size_he_px": 500,
+  "min_umi": 3,
+  "ppm": 10,
+  "landmarks": {"msi": [], "st": []},
+  "regions": {},
+  "refine": true
+}
